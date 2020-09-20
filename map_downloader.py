@@ -10,7 +10,7 @@ from tqdm import trange
 
 APP_NAME = "MapDownloader"
 APP_DESCRIPTION = "Map Downloader"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 
 
 URL_PATTERN_DICT = {
@@ -21,17 +21,17 @@ URL_PATTERN_DICT = {
 }
 
 OUTPUT_TILE_FILE_NAME_PATTERN_DICT = {
-    "esri.satellite": "./OfflineMap/Tile/esri/esri_100-2-{z}-{x}-{y}.jpg",
-    "google.road": "./OfflineMap/Tile/google/googleroad_100-2-{z}-{x}-{y}.jpg",
-    "google.satellite": "./OfflineMap/Tile/google/googlesatellite_100-2-{z}-{x}-{y}.jpg",
-    "openstreetmap": "./OfflineMap/Tile/openstreetmap/openstreetmap_100-2-{z}-{x}-{y}.png",
+    "esri.satellite": "./OfflineMap/Tile/esri-satellite/{z}/{x}/{y}.jpg",
+    "google.road": "./OfflineMap/Tile/google-road/{z}/{x}/{y}.jpg",
+    "google.satellite": "./OfflineMap/Tile/google-satellite/{z}/{x}/{y}.jpg",
+    "openstreetmap": "./OfflineMap/Tile/openstreetmap/{z}/{x}/{y}.png",
 }
 
 OUTPUT_MOSAIC_FILE_NAME_PATTERN_DICT = {
-    "esri.satellite": "./OfflineMap/Mosaic/esri/esri_100-2-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
-    "google.road": "./OfflineMap/Mosaic/google/googleroad_100-2-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
-    "google.satellite": "./OfflineMap/Mosaic/google/googlesatellite_100-2-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
-    "openstreetmap": "./OfflineMap/Mosaic/openstreetmap/openstreetmap_100-2-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
+    "esri.satellite": "./OfflineMap/Mosaic/esri-satellite-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
+    "google.road": "./OfflineMap/Mosaic/google-road-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
+    "google.satellite": "./OfflineMap/Mosaic/google-satellite-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
+    "openstreetmap": "./OfflineMap/Mosaic/openstreetmap-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg",
 }
 
 
@@ -70,7 +70,7 @@ def download_tile(x, y, z, provider):
         for chunk in response.iter_content(chunk_size=1024):
             if chunk:
                 file.write(chunk)
-                file.flush()
+                # file.flush()
 
 
 def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
@@ -143,9 +143,14 @@ def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
     assert(y_min <= y_max)
     assert(0 <= z)
 
-    for x in trange(x_min, x_max + 1, desc="Download tiles (zoom level {})".format(z)):
-        for y in range(y_min, y_max + 1):
-            download_tile(x, y, z, provider)
+    x_count = x_max - x_min + 1
+    y_count = y_max - y_min + 1
+    total_count = x_count * y_count
+
+    for index in trange(total_count, desc="Download tiles (zoom level {})".format(z)):
+        x = index // y_count
+        y = index % y_count
+        download_tile(x, y, z, provider)
 
     if mosaic:
         mosaic_tiles(x_min, x_max, y_min, y_max, z, provider)
@@ -168,14 +173,14 @@ def download_tiles_by_latlng_range(longitude_min, longitude_max, latitude_min, l
 def get_args():
     arg_parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)
     arg_parser.add_argument("-v", "--version", action="version", version="%(prog)s {}".format(APP_VERSION))
-    arg_parser.add_argument("-l", "--longitude-min", help="The min longitude (default: '%(default)s').", type=float, default=116.3577)
-    arg_parser.add_argument("-r", "--longitude-max", help="The max longitude (default: '%(default)s').", type=float, default=116.4250)
-    arg_parser.add_argument("-b", "--latitude-min", help="The min latitude (default: '%(default)s').", type=float, default=39.8980)
-    arg_parser.add_argument("-t", "--latitude-max", help="The max latitude (default: '%(default)s').", type=float, default=39.9272)
+    arg_parser.add_argument("-l", "--longitude-min", help="The min longitude (default: '%(default)s').", type=float, default=-179.999999)
+    arg_parser.add_argument("-r", "--longitude-max", help="The max longitude (default: '%(default)s').", type=float, default=179.999999)
+    arg_parser.add_argument("-b", "--latitude-min", help="The min latitude (default: '%(default)s').", type=float, default=-84.999999)
+    arg_parser.add_argument("-t", "--latitude-max", help="The max latitude (default: '%(default)s').", type=float, default=84.999999)
     arg_parser.add_argument("-z", "--z-min", help="The min zoom level (default: '%(default)s').", type=int, default=0)
-    arg_parser.add_argument("-x", "--z-max", help="The max zoom level (default: '%(default)s').", type=int, default=16)
-    arg_parser.add_argument("-p", "--provider", help="The map provider (default: '%(default)s').", default="esri.satellite")
-    arg_parser.add_argument("-m", "--mosaic", help="Whether to mosaic the map (default: '%(default)s').", action="store_true", default=True)
+    arg_parser.add_argument("-x", "--z-max", help="The max zoom level (default: '%(default)s').", type=int, default=10)
+    arg_parser.add_argument("-p", "--provider", help="The map provider (default: '%(default)s').", default="google.road")
+    arg_parser.add_argument("-m", "--mosaic", help="Whether to mosaic the map (default: '%(default)s').", action="store_true", default=False)
 
     return arg_parser.parse_args()
 
