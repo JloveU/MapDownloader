@@ -10,7 +10,7 @@ from tqdm import trange
 
 APP_NAME = "MapDownloader"
 APP_DESCRIPTION = "Map Downloader"
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.8.0"
 
 
 URL_PATTERN_DICT = {
@@ -56,14 +56,17 @@ def tile2latlng(x, y, z):
 
 
 def download_tile(x, y, z, provider):
-    file_name = OUTPUT_TILE_FILE_NAME_PATTERN_DICT[provider].format(x=x, y=y, z=z)
+    url_pattern = provider["url"] if isinstance(provider, dict) else URL_PATTERN_DICT[provider]
+    output_tile_file_name_pattern = provider["output_tile"] if isinstance(provider, dict) else OUTPUT_TILE_FILE_NAME_PATTERN_DICT[provider]
+
+    file_name = output_tile_file_name_pattern.format(x=x, y=y, z=z)
     if os.path.exists(file_name):
         return
 
     dir_name, _ = os.path.split(file_name)
     os.makedirs(dir_name, exist_ok=True)
 
-    url = URL_PATTERN_DICT[provider].format(x=x, y=y, z=z)
+    url = url_pattern.format(x=x, y=y, z=z)
     response = requests.get(url)
 
     with open(file_name, "wb") as file:
@@ -82,12 +85,15 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     assert(y_min <= y_max)
     assert(0 <= z)
 
+    output_tile_file_name_pattern = provider["output_tile"] if isinstance(provider, dict) else OUTPUT_TILE_FILE_NAME_PATTERN_DICT[provider]
+    output_mosaic_file_name_pattern = provider["output_mosaic"] if isinstance(provider, dict) else OUTPUT_MOSAIC_FILE_NAME_PATTERN_DICT[provider]
+
     mosaic_image_width, mosaic_image_height = (x_max - x_min + 1) * 256, (y_max - y_min + 1) * 256
     mosaic_image = Image.new("RGB", (mosaic_image_width, mosaic_image_height))
 
     for x in trange(x_min, x_max + 1, desc="Mosaic tiles (zoom level {})".format(z)):
         for y in range(y_min, y_max + 1):
-            tile_file_name = OUTPUT_TILE_FILE_NAME_PATTERN_DICT[provider].format(x=x, y=y, z=z)
+            tile_file_name = output_tile_file_name_pattern.format(x=x, y=y, z=z)
             if os.path.exists(tile_file_name):
                 try:
                     tile_image = Image.open(tile_file_name)
@@ -97,7 +103,7 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
                     print("Bad image: {}".format(tile_file_name))
                     continue
 
-    mosaic_file_name = OUTPUT_MOSAIC_FILE_NAME_PATTERN_DICT[provider].format(x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max, z=z)
+    mosaic_file_name = output_mosaic_file_name_pattern.format(x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max, z=z)
     dir_name, _ = os.path.split(mosaic_file_name)
     os.makedirs(dir_name, exist_ok=True)
     mosaic_image.save(mosaic_file_name)
@@ -181,6 +187,9 @@ def get_args():
     arg_parser.add_argument("-x", "--z-max", help="The max zoom level (default: '%(default)s').", type=int, default=10)
     arg_parser.add_argument("-p", "--provider", help="The map provider (default: '%(default)s').", default="google.road")
     arg_parser.add_argument("-m", "--mosaic", help="Whether to mosaic the map (default: '%(default)s').", action="store_true", default=False)
+    arg_parser.add_argument("--url", help="The url pattern.")
+    arg_parser.add_argument("--output-tile", help="The output tile file name pattern.")
+    arg_parser.add_argument("--output-mosaic", help="The output mosaic file name pattern.")
 
     return arg_parser.parse_args()
 
@@ -196,6 +205,16 @@ def main():
     z_max = args.z_max
     provider = args.provider
     mosaic = args.mosaic
+    url = args.url
+    output_tile = args.output_tile
+    output_mosaic = args.output_mosaic
+
+    if (provider not in URL_PATTERN_DICT) and (url is not None):
+        if output_tile is None:
+            output_tile = "./OfflineMap/Tile/" + provider + "/{z}/{x}/{y}.jpg"
+        if output_mosaic is None:
+            output_mosaic = "./OfflineMap/Mosaic/" + provider + "-{z}-{x_min}_{x_max}-{y_min}_{y_max}.jpg"
+        provider = {"url": url, "output_tile": output_tile, "output_mosaic": output_mosaic}
 
     for z in range(z_min, z_max + 1):
         download_tiles_by_latlng_range(longitude_min, longitude_max, latitude_min, latitude_max, z, provider, mosaic)
