@@ -3,9 +3,11 @@ import sys
 import argparse
 import requests
 import tempfile
+import PIL
+import PIL.Image
+import tqdm
+import tqdm.contrib.concurrent
 from math import sin, cos, tan, atan, sinh, pi, pow, log, radians, degrees, floor
-from PIL import Image
-from tqdm import trange
 
 
 APP_NAME = "MapDownloader"
@@ -76,6 +78,10 @@ def download_tile(x, y, z, provider):
                 # file.flush()
 
 
+def download_tile_(param):
+    download_tile(*param)
+
+
 def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     assert(0 <= x_min)
     assert(0 <= x_max)
@@ -89,14 +95,14 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     output_mosaic_file_name_pattern = provider["output_mosaic"] if isinstance(provider, dict) else OUTPUT_MOSAIC_FILE_NAME_PATTERN_DICT[provider]
 
     mosaic_image_width, mosaic_image_height = (x_max - x_min + 1) * 256, (y_max - y_min + 1) * 256
-    mosaic_image = Image.new("RGB", (mosaic_image_width, mosaic_image_height))
+    mosaic_image = PIL.Image.new("RGB", (mosaic_image_width, mosaic_image_height))
 
-    for x in trange(x_min, x_max + 1, desc="Mosaic tiles (zoom level {})".format(z)):
+    for x in tqdm.trange(x_min, x_max + 1, desc="Mosaic tiles (zoom level {})".format(z)):
         for y in range(y_min, y_max + 1):
             tile_file_name = output_tile_file_name_pattern.format(x=x, y=y, z=z)
             if os.path.exists(tile_file_name):
                 try:
-                    tile_image = Image.open(tile_file_name)
+                    tile_image = PIL.Image.open(tile_file_name)
                     mosaic_image.paste(tile_image, (256 * (x - x_min), 256 * (y - y_min)))
                     tile_image.close()
                 except Exception as e:
@@ -153,10 +159,17 @@ def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
     y_count = y_max - y_min + 1
     total_count = x_count * y_count
 
-    for index in trange(total_count, desc="Download tiles (zoom level {})".format(z)):
-        x = x_min + (index % x_count)
-        y = y_min + (index // x_count)
-        download_tile(x, y, z, provider)
+    print("Download tiles (zoom level {})".format(z))
+
+    use_concurrent = True
+
+    if use_concurrent:
+        tqdm.contrib.concurrent.process_map(download_tile_, [(x_min + (index % x_count), y_min + (index // x_count), z, provider) for index in range(total_count)], chunksize=16)
+    else:
+        for index in tqdm.trange(total_count):
+            x = x_min + (index % x_count)
+            y = y_min + (index // x_count)
+            download_tile(x, y, z, provider)
 
     if mosaic:
         mosaic_tiles(x_min, x_max, y_min, y_max, z, provider)
