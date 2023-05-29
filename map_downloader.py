@@ -154,8 +154,8 @@ def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
     total_count = x_count * y_count
 
     for index in trange(total_count, desc="Download tiles (zoom level {})".format(z)):
-        x = index // y_count
-        y = index % y_count
+        x = x_min + (index % x_count)
+        y = y_min + (index // x_count)
         download_tile(x, y, z, provider)
 
     if mosaic:
