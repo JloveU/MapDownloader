@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import logging
 import requests
 import tempfile
 import time
@@ -105,7 +106,9 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     mosaic_image_width, mosaic_image_height = (x_max - x_min + 1) * 256, (y_max - y_min + 1) * 256
     mosaic_image = PIL.Image.new("RGB", (mosaic_image_width, mosaic_image_height))
 
-    for x in tqdm.trange(x_min, x_max + 1, desc="Mosaic tiles (zoom level {})".format(z)):
+    logging.info(f"Mosaic tiles (zoom level {z})")
+
+    for x in tqdm.trange(x_min, x_max + 1):
         for y in range(y_min, y_max + 1):
             tile_file_name = output_tile_file_name_pattern.format(x=x, y=y, z=z)
             if os.path.exists(tile_file_name):
@@ -114,7 +117,7 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
                     mosaic_image.paste(tile_image, (256 * (x - x_min), 256 * (y - y_min)))
                     tile_image.close()
                 except Exception as e:
-                    print("Bad image: {}".format(tile_file_name))
+                    logging.warning(f"Bad image: {tile_file_name}")
                     continue
 
     mosaic_file_name = output_mosaic_file_name_pattern.format(x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max, z=z)
@@ -128,15 +131,15 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     os.rename(mosaic_file_name, temp_file_name)
     longitude_min, latitude_max = tile2latlng(x_min, y_min, z)
     longitude_max, latitude_min = tile2latlng(x_max + 1, y_max + 1, z)
-    print("Actual latlon bound: [[{:.7f}, {:.7f}], [{:.7f}, {:.7f}]]".format(latitude_min, longitude_min, latitude_max, longitude_max))
+    logging.info(f"Actual latlon bound: [[{latitude_min:.7f}, {longitude_min:.7f}], [{latitude_max:.7f}, {longitude_max:.7f}]]")
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
             input_file_name = os.path.join(temp_dir, "input.txt")
             output_file_name = os.path.join(temp_dir, "output.txt")
             with open(input_file_name, "wt") as file:
-                file.write("{:.7f} {:.7f}\n{:.7f} {:.7f}\n".format(longitude_min, latitude_max, longitude_max, latitude_min))
-            command_string = "gdaltransform -s_srs EPSG:4326 -t_srs EPSG:3857 -output_xy < \"{input_file_name}\" > \"{output_file_name}\"".format(input_file_name=input_file_name, output_file_name=output_file_name)
-            print(command_string)
+                file.write(f"{longitude_min:.7f} {latitude_max:.7f}\n{longitude_max:.7f} {latitude_min:.7f}\n")
+            command_string = f"gdaltransform -s_srs EPSG:4326 -t_srs EPSG:3857 -output_xy < \"{input_file_name}\" > \"{output_file_name}\""
+            logging.info(command_string)
             os.system(command_string)
             with open(output_file_name, "rt") as file:
                 geo_x_min_string, geo_y_max_string = tuple(file.readline().strip().split(" "))
@@ -147,11 +150,11 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
         os.rename(temp_file_name, mosaic_file_name)
     else:
         output_format = "JPEG" if (extension == ".jpg") else "GTIFF"
-        command_string = "gdal_translate -of {output_format} -a_srs EPSG:3857 -a_ullr {ulx} {uly} {lrx} {lry} \"{input_file_name}\" \"{output_file_name}\"".format(output_format=output_format, ulx=geo_x_min, uly=geo_y_max, lrx=geo_x_max, lry=geo_y_min, input_file_name=temp_file_name, output_file_name=mosaic_file_name)
-        print(command_string)
+        command_string = f"gdal_translate -of {output_format} -a_srs EPSG:3857 -a_ullr {geo_x_min} {geo_y_max} {geo_x_max} {geo_y_min} \"{temp_file_name}\" \"{mosaic_file_name}\""
+        logging.info(command_string)
         os.system(command_string)
         os.remove(temp_file_name)
-        open(mosaic_file_name + ".latlonbound.txt", "wt").write("[[{:.7f}, {:.7f}], [{:.7f}, {:.7f}]]".format(latitude_min, longitude_min, latitude_max, longitude_max))
+        open(mosaic_file_name + ".latlonbound.txt", "wt").write(f"[[{latitude_min:.7f}, {longitude_min:.7f}], [{latitude_max:.7f}, {longitude_max:.7f}]]")
 
 
 def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
@@ -167,10 +170,10 @@ def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
     y_count = y_max - y_min + 1
     total_count = x_count * y_count
 
-    print("Download tiles (zoom level {})".format(z))
+    logging.info(f"Download tiles (zoom level {z})")
 
     begin_time = time.monotonic()
-    use_concurrent = True
+    use_concurrent = False
 
     if use_concurrent:
         tqdm.contrib.concurrent.process_map(download_tile_, [(x_min + (index % x_count), y_min + (index // x_count), z, provider, begin_time) for index in range(total_count)], max_workers=2, chunksize=2)
@@ -200,7 +203,7 @@ def download_tiles_by_latlng_range(longitude_min, longitude_max, latitude_min, l
 
 def get_args():
     arg_parser = argparse.ArgumentParser(prog=APP_NAME, description=APP_DESCRIPTION)
-    arg_parser.add_argument("-v", "--version", action="version", version="%(prog)s {}".format(APP_VERSION))
+    arg_parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {APP_VERSION}")
     arg_parser.add_argument("-l", "--longitude-min", help="The min longitude (default: '%(default)s').", type=float, default=-179.999999)
     arg_parser.add_argument("-r", "--longitude-max", help="The max longitude (default: '%(default)s').", type=float, default=179.999999)
     arg_parser.add_argument("-b", "--latitude-min", help="The min latitude (default: '%(default)s').", type=float, default=-84.999999)
@@ -209,6 +212,7 @@ def get_args():
     arg_parser.add_argument("-x", "--z-max", help="The max zoom level (default: '%(default)s').", type=int, default=10)
     arg_parser.add_argument("-p", "--provider", help="The map provider (default: '%(default)s').", default="google.road")
     arg_parser.add_argument("-m", "--mosaic", help="Whether to mosaic the map (default: '%(default)s').", action="store_true", default=False)
+    arg_parser.add_argument("--log-file", help="The log file name (default: log not saved).")
     arg_parser.add_argument("--url", help="The url pattern.")
     arg_parser.add_argument("--output-tile", help="The output tile file name pattern.")
     arg_parser.add_argument("--output-mosaic", help="The output mosaic file name pattern.")
@@ -218,6 +222,9 @@ def get_args():
 
 def main():
     args = get_args()
+
+    logging.basicConfig(filename=args.log_file, filemode="a", format="[%(asctime)s] [%(levelname)s] [%(module)s.%(funcName)s] %(message)s", level=logging.DEBUG)
+    logging.info(APP_DESCRIPTION)
 
     longitude_min = args.longitude_min
     longitude_max = args.longitude_max
@@ -241,7 +248,7 @@ def main():
     for z in range(z_min, z_max + 1):
         download_tiles_by_latlng_range(longitude_min, longitude_max, latitude_min, latitude_max, z, provider, mosaic)
 
-    print("Done!")
+    logging.info("Done.")
 
 
 if __name__ == "__main__":
