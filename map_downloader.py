@@ -233,7 +233,7 @@ def get_args():
 def main():
     args = get_args()
 
-    logging.basicConfig(filename=args.log_file, filemode="a", format="[%(asctime)s] [%(levelname)s] [%(module)s.%(funcName)s] %(message)s", level=logging.DEBUG)
+    logging.basicConfig(filename=args.log_file, filemode="a", format="[%(asctime)s] [%(levelname)s] [%(module)s.%(funcName)s] %(message)s", level=logging.INFO)
     logging.info(APP_DESCRIPTION)
 
     longitude_min = args.longitude_min
