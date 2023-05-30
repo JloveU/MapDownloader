@@ -3,6 +3,7 @@ import sys
 import argparse
 import requests
 import tempfile
+import time
 import PIL
 import PIL.Image
 import tqdm
@@ -37,6 +38,10 @@ OUTPUT_MOSAIC_FILE_NAME_PATTERN_DICT = {
 }
 
 
+work_time = 120
+sleep_time = 30
+
+
 def latlng2tile(longitude, latitude, z):
     n = pow(2, z)
     x = ((longitude + 180.0) / 360.0) * n
@@ -57,7 +62,10 @@ def tile2latlng(x, y, z):
     return longitude, latitude
 
 
-def download_tile(x, y, z, provider):
+def download_tile(x, y, z, provider, begin_time=None):
+    while (int(time.monotonic() - begin_time) % (work_time + sleep_time)) > work_time:
+        time.sleep(1)
+
     url_pattern = provider["url"] if isinstance(provider, dict) else URL_PATTERN_DICT[provider]
     output_tile_file_name_pattern = provider["output_tile"] if isinstance(provider, dict) else OUTPUT_TILE_FILE_NAME_PATTERN_DICT[provider]
 
@@ -161,15 +169,16 @@ def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
 
     print("Download tiles (zoom level {})".format(z))
 
+    begin_time = time.monotonic()
     use_concurrent = True
 
     if use_concurrent:
-        tqdm.contrib.concurrent.process_map(download_tile_, [(x_min + (index % x_count), y_min + (index // x_count), z, provider) for index in range(total_count)], chunksize=16)
+        tqdm.contrib.concurrent.process_map(download_tile_, [(x_min + (index % x_count), y_min + (index // x_count), z, provider, begin_time) for index in range(total_count)], max_workers=2, chunksize=2)
     else:
         for index in tqdm.trange(total_count):
             x = x_min + (index % x_count)
             y = y_min + (index // x_count)
-            download_tile(x, y, z, provider)
+            download_tile(x, y, z, provider, begin_time)
 
     if mosaic:
         mosaic_tiles(x_min, x_max, y_min, y_max, z, provider)
