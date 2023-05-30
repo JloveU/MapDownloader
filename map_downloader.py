@@ -78,7 +78,17 @@ def download_tile(x, y, z, provider, begin_time=None):
     os.makedirs(dir_name, exist_ok=True)
 
     url = url_pattern.format(x=x, y=y, z=z)
-    response = requests.get(url)
+
+    wait_time = 1
+    while True:
+        try:
+            response = requests.get(url)
+            break
+        except Exception as e:
+            logging.critical(f"Failed to download '{url}' to '{file_name}': {e}")
+            logging.critical(f"Wait {wait_time} seconds ...")
+            time.sleep(wait_time)
+            wait_time = min(wait_time * 2, 1 * 60 * 60)
 
     with open(file_name, "wb") as file:
         for chunk in response.iter_content(chunk_size=1024):
