@@ -147,35 +147,72 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     logging.info(f"Saved latlon bound to: {latlon_bound_file_name}")
 
     try:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            input_file_name = os.path.join(temp_dir, "input.txt")
-            output_file_name = os.path.join(temp_dir, "output.txt")
-            with open(input_file_name, "wt") as file:
-                file.write(f"{longitude_min:.7f} {latitude_max:.7f}\n{longitude_max:.7f} {latitude_min:.7f}\n")
-            command_string = f"gdaltransform -s_srs EPSG:4326 -t_srs EPSG:3857 -output_xy < \"{input_file_name}\" > \"{output_file_name}\""
-            logging.info(command_string)
-            r = os.system(command_string)
-            if r != 0:
-                raise RuntimeError(f"gdaltransform failed with return code {r}")
-            with open(output_file_name, "rt") as file:
-                geo_x_min_string, geo_y_max_string = tuple(file.readline().strip().split(" "))
-                geo_x_max_string, geo_y_min_string = tuple(file.readline().strip().split(" "))
-                geo_x_min, geo_y_max = float(geo_x_min_string), float(geo_y_max_string)
-                geo_x_max, geo_y_min = float(geo_x_max_string), float(geo_y_min_string)
+        gdal_use_type = 1
+
+        if gdal_use_type == 1:
+            from osgeo import gdal
+
+            transformer = gdal.Transformer(None, None, ["SRC_SRS=EPSG:4326", "DST_SRS=EPSG:3857"])
+            geo_x_min, geo_y_max = transformer.TransformPoint(0, longitude_min, latitude_max, 0)[1][:2]
+            geo_x_max, geo_y_min = transformer.TransformPoint(0, longitude_max, latitude_min, 0)[1][:2]
+            logging.info(f"Actual geo bound: [[{geo_y_min:.7f}, {geo_x_min:.7f}], [{geo_y_max:.7f}, {geo_x_max:.7f}]]")
             geo_bound_file_name = mosaic_file_name + ".geo-bound-ulx-uly-lrx-lry.txt"
-            shutil.copy(output_file_name, geo_bound_file_name)
+            open(geo_bound_file_name, "wt").write(f"{geo_x_min:.7f} {geo_y_max:.7f}\n{geo_x_max:.7f} {geo_y_min:.7f}\n")
             logging.info(f"Saved geo bound to: {geo_bound_file_name}")
 
-            temp_file_name = os.path.join(temp_dir, os.path.basename(mosaic_file_name))
-            output_format = "JPEG" if (os.path.splitext(mosaic_file_name)[-1] == ".jpg") else "GTIFF"
-            command_string = f"gdal_translate -of {output_format} -a_srs EPSG:3857 -a_ullr {geo_x_min} {geo_y_max} {geo_x_max} {geo_y_min} \"{mosaic_file_name}\" \"{temp_file_name}\""
-            logging.info(command_string)
-            r = os.system(command_string)
-            if r != 0:
-                raise RuntimeError(f"gdal_translate failed with return code {r}")
-            shutil.move(temp_file_name, mosaic_file_name)
-            for file_name in glob.glob(temp_file_name + "*"):
-                shutil.move(file_name, os.path.dirname(mosaic_file_name))
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_file_name = os.path.join(temp_dir, os.path.basename(mosaic_file_name))
+                r = gdal.Translate(temp_file_name, mosaic_file_name, format=("JPEG" if (os.path.splitext(mosaic_file_name)[-1] == ".jpg") else "GTIFF"), outputSRS="EPSG:3857", outputBounds=[geo_x_min, geo_y_max, geo_x_max, geo_y_min])
+                if r is None:
+                    raise RuntimeError(f"gdal.Translate failed")
+                shutil.move(temp_file_name, mosaic_file_name)
+                mosaic_dir = os.path.dirname(mosaic_file_name)
+                for temp_path in glob.glob(os.path.join(temp_dir, "*")):
+                    mosaic_path = os.path.join(mosaic_dir, os.path.basename(temp_path))
+                    if os.path.exists(mosaic_path):
+                        if os.path.isdir(mosaic_path):
+                            shutil.rmtree(mosaic_path)
+                        else:
+                            os.remove(mosaic_path)
+                    shutil.move(temp_path, mosaic_path)
+        else:  # gdal_use_type == 2
+            with tempfile.TemporaryDirectory() as temp_dir:
+                input_file_name = os.path.join(temp_dir, "input.txt")
+                output_file_name = os.path.join(temp_dir, "output.txt")
+                with open(input_file_name, "wt") as file:
+                    file.write(f"{longitude_min:.7f} {latitude_max:.7f}\n{longitude_max:.7f} {latitude_min:.7f}\n")
+                command_string = f"gdaltransform -s_srs EPSG:4326 -t_srs EPSG:3857 -output_xy < \"{input_file_name}\" > \"{output_file_name}\""
+                logging.info(command_string)
+                r = os.system(command_string)
+                if r != 0:
+                    raise RuntimeError(f"gdaltransform failed with return code {r}")
+                with open(output_file_name, "rt") as file:
+                    geo_x_min_string, geo_y_max_string = tuple(file.readline().strip().split(" "))
+                    geo_x_max_string, geo_y_min_string = tuple(file.readline().strip().split(" "))
+                    geo_x_min, geo_y_max = float(geo_x_min_string), float(geo_y_max_string)
+                    geo_x_max, geo_y_min = float(geo_x_max_string), float(geo_y_min_string)
+                geo_bound_file_name = mosaic_file_name + ".geo-bound-ulx-uly-lrx-lry.txt"
+                shutil.copy2(output_file_name, geo_bound_file_name)
+                logging.info(f"Saved geo bound to: {geo_bound_file_name}")
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_file_name = os.path.join(temp_dir, os.path.basename(mosaic_file_name))
+                output_format = "JPEG" if (os.path.splitext(mosaic_file_name)[-1] == ".jpg") else "GTIFF"
+                command_string = f"gdal_translate -of {output_format} -a_srs EPSG:3857 -a_ullr {geo_x_min} {geo_y_max} {geo_x_max} {geo_y_min} \"{mosaic_file_name}\" \"{temp_file_name}\""
+                logging.info(command_string)
+                r = os.system(command_string)
+                if r != 0:
+                    raise RuntimeError(f"gdal_translate failed with return code {r}")
+                shutil.move(temp_file_name, mosaic_file_name)
+                mosaic_dir = os.path.dirname(mosaic_file_name)
+                for temp_path in glob.glob(os.path.join(temp_dir, "*")):
+                    mosaic_path = os.path.join(mosaic_dir, os.path.basename(temp_path))
+                    if os.path.exists(mosaic_path):
+                        if os.path.isdir(mosaic_path):
+                            shutil.rmtree(mosaic_path)
+                        else:
+                            os.remove(mosaic_path)
+                    shutil.move(temp_path, mosaic_path)
 
         logging.info(f"Added geographic information to: '{mosaic_file_name}'")
     except Exception as e:
