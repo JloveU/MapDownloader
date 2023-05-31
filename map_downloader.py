@@ -165,6 +165,8 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
                 r = gdal.Translate(temp_file_name, mosaic_file_name, format=("JPEG" if (os.path.splitext(mosaic_file_name)[-1] == ".jpg") else "GTIFF"), outputSRS="EPSG:3857", outputBounds=[geo_x_min, geo_y_max, geo_x_max, geo_y_min])
                 if r is None:
                     raise RuntimeError(f"gdal.Translate failed")
+                else:
+                    r = None
                 shutil.move(temp_file_name, mosaic_file_name)
                 mosaic_dir = os.path.dirname(mosaic_file_name)
                 for temp_path in glob.glob(os.path.join(temp_dir, "*")):
