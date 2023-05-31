@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import glob
 import logging
 import requests
 import shutil
@@ -173,6 +174,8 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
             if r != 0:
                 raise RuntimeError(f"gdal_translate failed with return code {r}")
             shutil.move(temp_file_name, mosaic_file_name)
+            for file_name in glob.glob(temp_file_name + "*"):
+                shutil.move(file_name, os.path.dirname(mosaic_file_name))
 
         logging.info(f"Added geographic information to: '{mosaic_file_name}'")
     except Exception as e:
