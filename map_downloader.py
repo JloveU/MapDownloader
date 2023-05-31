@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 import requests
+import shutil
 import tempfile
 import time
 import PIL
@@ -118,8 +119,8 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
 
     logging.info(f"Mosaic tiles (zoom level {z})")
 
-    for x in tqdm.trange(x_min, x_max + 1):
-        for y in range(y_min, y_max + 1):
+    for y in tqdm.trange(y_min, y_max + 1):
+        for x in range(x_min, x_max + 1):
             tile_file_name = output_tile_file_name_pattern.format(x=x, y=y, z=z)
             if os.path.exists(tile_file_name):
                 try:
@@ -135,13 +136,15 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     os.makedirs(dir_name, exist_ok=True)
     mosaic_image.save(mosaic_file_name)
     mosaic_image.close()
+    logging.info(f"Saved mosaic image to: {mosaic_file_name}")
 
-    base_name, extension = os.path.splitext(mosaic_file_name)
-    temp_file_name = base_name + "_temp" + extension
-    os.rename(mosaic_file_name, temp_file_name)
     longitude_min, latitude_max = tile2latlon(x_min, y_min, z)
     longitude_max, latitude_min = tile2latlon(x_max + 1, y_max + 1, z)
     logging.info(f"Actual latlon bound: [[{latitude_min:.7f}, {longitude_min:.7f}], [{latitude_max:.7f}, {longitude_max:.7f}]]")
+    latlon_bound_file_name = mosaic_file_name + ".latlon-bound-ulx-uly-lrx-lry.txt"
+    open(latlon_bound_file_name, "wt").write(f"{longitude_min:.7f} {latitude_max:.7f}\n{longitude_max:.7f} {latitude_min:.7f}\n")
+    logging.info(f"Saved latlon bound to: {latlon_bound_file_name}")
+
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
             input_file_name = os.path.join(temp_dir, "input.txt")
@@ -150,21 +153,30 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
                 file.write(f"{longitude_min:.7f} {latitude_max:.7f}\n{longitude_max:.7f} {latitude_min:.7f}\n")
             command_string = f"gdaltransform -s_srs EPSG:4326 -t_srs EPSG:3857 -output_xy < \"{input_file_name}\" > \"{output_file_name}\""
             logging.info(command_string)
-            os.system(command_string)
+            r = os.system(command_string)
+            if r != 0:
+                raise RuntimeError(f"gdaltransform failed with return code {r}")
             with open(output_file_name, "rt") as file:
                 geo_x_min_string, geo_y_max_string = tuple(file.readline().strip().split(" "))
                 geo_x_max_string, geo_y_min_string = tuple(file.readline().strip().split(" "))
                 geo_x_min, geo_y_max = float(geo_x_min_string), float(geo_y_max_string)
                 geo_x_max, geo_y_min = float(geo_x_max_string), float(geo_y_min_string)
-    except Exception:
-        os.rename(temp_file_name, mosaic_file_name)
-    else:
-        output_format = "JPEG" if (extension == ".jpg") else "GTIFF"
-        command_string = f"gdal_translate -of {output_format} -a_srs EPSG:3857 -a_ullr {geo_x_min} {geo_y_max} {geo_x_max} {geo_y_min} \"{temp_file_name}\" \"{mosaic_file_name}\""
-        logging.info(command_string)
-        os.system(command_string)
-        os.remove(temp_file_name)
-        open(mosaic_file_name + ".latlonbound.txt", "wt").write(f"[[{latitude_min:.7f}, {longitude_min:.7f}], [{latitude_max:.7f}, {longitude_max:.7f}]]")
+            geo_bound_file_name = mosaic_file_name + ".geo-bound-ulx-uly-lrx-lry.txt"
+            shutil.copy(output_file_name, geo_bound_file_name)
+            logging.info(f"Saved geo bound to: {geo_bound_file_name}")
+
+            temp_file_name = os.path.join(temp_dir, os.path.basename(mosaic_file_name))
+            output_format = "JPEG" if (os.path.splitext(mosaic_file_name)[-1] == ".jpg") else "GTIFF"
+            command_string = f"gdal_translate -of {output_format} -a_srs EPSG:3857 -a_ullr {geo_x_min} {geo_y_max} {geo_x_max} {geo_y_min} \"{mosaic_file_name}\" \"{temp_file_name}\""
+            logging.info(command_string)
+            r = os.system(command_string)
+            if r != 0:
+                raise RuntimeError(f"gdal_translate failed with return code {r}")
+            shutil.move(temp_file_name, mosaic_file_name)
+
+        logging.info(f"Added geographic information to: '{mosaic_file_name}'")
+    except Exception as e:
+        logging.critical(f"Failed to add geographic information to '{mosaic_file_name}': {e}")
 
 
 def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
