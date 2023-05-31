@@ -43,7 +43,7 @@ work_time = 120
 sleep_time = 30
 
 
-def latlng2tile(longitude, latitude, z):
+def latlon2tile(longitude, latitude, z):
     n = pow(2, z)
     x = ((longitude + 180.0) / 360.0) * n
     latitude_radian = radians(latitude)
@@ -52,7 +52,7 @@ def latlng2tile(longitude, latitude, z):
     return floor(x), floor(y)
 
 
-def tile2latlng(x, y, z):
+def tile2latlon(x, y, z):
     n = pow(2, z)
     longitude = x / n * 360.0 - 180.0
     latitude_radian = atan(sinh(pi * (1.0 - 2.0 * y / n)))
@@ -139,8 +139,8 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     base_name, extension = os.path.splitext(mosaic_file_name)
     temp_file_name = base_name + "_temp" + extension
     os.rename(mosaic_file_name, temp_file_name)
-    longitude_min, latitude_max = tile2latlng(x_min, y_min, z)
-    longitude_max, latitude_min = tile2latlng(x_max + 1, y_max + 1, z)
+    longitude_min, latitude_max = tile2latlon(x_min, y_min, z)
+    longitude_max, latitude_min = tile2latlon(x_max + 1, y_max + 1, z)
     logging.info(f"Actual latlon bound: [[{latitude_min:.7f}, {longitude_min:.7f}], [{latitude_max:.7f}, {longitude_max:.7f}]]")
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -197,7 +197,7 @@ def download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic=True):
         mosaic_tiles(x_min, x_max, y_min, y_max, z, provider)
 
 
-def download_tiles_by_latlng_range(longitude_min, longitude_max, latitude_min, latitude_max, z, provider, mosaic=True):
+def download_tiles_by_latlon_range(longitude_min, longitude_max, latitude_min, latitude_max, z, provider, mosaic=True):
     assert(-180.0 <= longitude_min <= 180.0)
     assert(-180.0 <= longitude_max <= 180.0)
     assert(-90.0 <= latitude_min <= 90.0)
@@ -206,8 +206,8 @@ def download_tiles_by_latlng_range(longitude_min, longitude_max, latitude_min, l
     assert(latitude_min <= latitude_max)
     assert(0 <= z)
 
-    x_min, y_min = latlng2tile(longitude_min, latitude_max, z)
-    x_max, y_max = latlng2tile(longitude_max, latitude_min, z)
+    x_min, y_min = latlon2tile(longitude_min, latitude_max, z)
+    x_max, y_max = latlon2tile(longitude_max, latitude_min, z)
     download_tiles(x_min, x_max, y_min, y_max, z, provider, mosaic)
 
 
@@ -256,7 +256,7 @@ def main():
         provider = {"url": url, "output_tile": output_tile, "output_mosaic": output_mosaic}
 
     for z in range(z_min, z_max + 1):
-        download_tiles_by_latlng_range(longitude_min, longitude_max, latitude_min, latitude_max, z, provider, mosaic)
+        download_tiles_by_latlon_range(longitude_min, longitude_max, latitude_min, latitude_max, z, provider, mosaic)
 
     logging.info("Done.")
 
