@@ -112,6 +112,8 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
     assert(y_min <= y_max)
     assert(0 <= z)
 
+    PIL.Image.MAX_IMAGE_PIXELS = None
+
     output_tile_file_name_pattern = provider["output_tile"] if isinstance(provider, dict) else OUTPUT_TILE_FILE_NAME_PATTERN_DICT[provider]
     output_mosaic_file_name_pattern = provider["output_mosaic"] if isinstance(provider, dict) else OUTPUT_MOSAIC_FILE_NAME_PATTERN_DICT[provider]
 
