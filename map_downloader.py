@@ -164,7 +164,7 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_file_name = os.path.join(temp_dir, os.path.basename(mosaic_file_name))
-                r = gdal.Translate(temp_file_name, mosaic_file_name, format=("JPEG" if (os.path.splitext(mosaic_file_name)[-1] == ".jpg") else "GTIFF"), outputSRS="EPSG:3857", outputBounds=[geo_x_min, geo_y_max, geo_x_max, geo_y_min])
+                r = gdal.Translate(temp_file_name, mosaic_file_name, outputSRS="EPSG:3857", outputBounds=[geo_x_min, geo_y_max, geo_x_max, geo_y_min])
                 if r is None:
                     raise RuntimeError(f"gdal.Translate failed")
                 else:
@@ -201,8 +201,7 @@ def mosaic_tiles(x_min, x_max, y_min, y_max, z, provider):
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_file_name = os.path.join(temp_dir, os.path.basename(mosaic_file_name))
-                output_format = "JPEG" if (os.path.splitext(mosaic_file_name)[-1] == ".jpg") else "GTIFF"
-                command_string = f"gdal_translate -of {output_format} -a_srs EPSG:3857 -a_ullr {geo_x_min} {geo_y_max} {geo_x_max} {geo_y_min} \"{mosaic_file_name}\" \"{temp_file_name}\""
+                command_string = f"gdal_translate -a_srs EPSG:3857 -a_ullr {geo_x_min} {geo_y_max} {geo_x_max} {geo_y_min} \"{mosaic_file_name}\" \"{temp_file_name}\""
                 logging.info(command_string)
                 r = os.system(command_string)
                 if r != 0:
